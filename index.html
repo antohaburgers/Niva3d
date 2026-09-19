@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Niva3D v0.04</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#000}
+canvas{display:block}
+</style>
+</head>
+<body>
+
+<script type="module">
+
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9bd3ff);
+scene.fog = new THREE.Fog(0x9bd3ff, 50, 180);
+
+
+// Камера третьего лица
+const camera = new THREE.PerspectiveCamera(
+    55,
+    innerWidth / innerHeight,
+    0.1,
+    1000
+);
+
+
+// Рендер
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+
+// Свет
+scene.add(new THREE.HemisphereLight(0xffffff,0x445533,1.8));
+
+const sun = new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(30,50,20);
+scene.add(sun);
+
+
+// =====================
+// НИВА
+// =====================
+
+const niva = new THREE.Group();
+
+const body = new THREE.Mesh(
+    new THREE.BoxGeometry(2,0.8,3.8),
+    new THREE.MeshStandardMaterial({color:0x2b6b32})
+);
+body.position.y=0.8;
+niva.add(body);
+
+
+const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(1.7,0.6,1.8),
+    new THREE.MeshStandardMaterial({color:0x333333})
+);
+cabin.position.set(0,1.35,0.2);
+niva.add(cabin);
+
+
+const wheelGeo = new THREE.CylinderGeometry(0.42,0.42,0.35,16);
+
+for(const x of [-1,1]){
+    for(const z of [-1.2,1.2]){
+        const wheel = new THREE.Mesh(
+            wheelGeo,
+            new THREE.MeshStandardMaterial({color:0x111111})
+        );
+        wheel.rotation.z=Math.PI/2;
+        wheel.position.set(x,0.45,z);
+        niva.add(wheel);
+    }
+}
+
+scene.add(niva);
+
+
+// =====================
+// ЧАНКОВЫЙ МИР
+// =====================
+
+const CHUNK_SIZE = 40;
+const RENDER_DISTANCE = 2;
+
+const chunks = new Map();
+
+
+function createTree(group,x,z){
+
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15,0.25,1.2,6),
+        new THREE.MeshStandardMaterial({color:0x5a3820})
+    );
+
+    trunk.position.set(x,0.6,z);
+    group.add(trunk);
+
+
+    const crown = new THREE.Mesh(
+        new THREE.ConeGeometry(1.2,3,8),
+        new THREE.MeshStandardMaterial({color:0x1f6128})
+    );
+
+    crown.position.set(x,2.3,z);
+    group.add(crown);
+}
+
+
+
+function createChunk(cx,cz){
+
+    const chunk = new THREE.Group();
+
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(CHUNK_SIZE,CHUNK_SIZE,8,8),
+        new THREE.MeshStandardMaterial({
+            color:0x587c3b,
+            roughness:1
+        })
+    );
+
+    ground.rotation.x=-Math.PI/2;
+    chunk.add(ground);
+
+
+    // дорога
+    const road = new THREE.Mesh(
+        new THREE.PlaneGeometry(8,CHUNK_SIZE),
+        new THREE.MeshStandardMaterial({color:0x70563a})
+    );
+
+    road.rotation.x=-Math.PI/2;
+    road.position.y=0.02;
+    chunk.add(road);
+
+
+    // окружение
+    for(let i=0;i<5;i++){
+
+        createTree(
+            chunk,
+            (Math.random()-0.5)*CHUNK_SIZE,
+            (Math.random()-0.5)*CHUNK_SIZE
+        );
+    }
+
+
+    // камни
+    for(let i=0;i<3;i++){
+
+        const rock = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(0.5),
+            new THREE.MeshStandardMaterial({color:0x777777})
+        );
+
+        rock.position.set(
+            (Math.random()-0.5)*CHUNK_SIZE,
+            0.4,
+            (Math.random()-0.5)*CHUNK_SIZE
+        );
+
+        chunk.add(rock);
+    }
+
+
+    chunk.position.set(
+        cx*CHUNK_SIZE,
+        0,
+        cz*CHUNK_SIZE
+    );
+
+    scene.add(chunk);
+    chunks.set(`${cx}_${cz}`,chunk);
+}
+
+
+
+function updateChunks(){
+
+    const cx=Math.floor(niva.position.x/CHUNK_SIZE);
+    const cz=Math.floor(niva.position.z/CHUNK_SIZE);
+
+
+    for(let x=cx-RENDER_DISTANCE;x<=cx+RENDER_DISTANCE;x++){
+        for(let z=cz-RENDER_DISTANCE;z<=cz+RENDER_DISTANCE;z++){
+
+            const key=`${x}_${z}`;
+
+            if(!chunks.has(key)){
+                createChunk(x,z);
+            }
+        }
+    }
+
+
+    for(const [key,obj] of chunks){
+
+        const [x,z]=key.split('_').map(Number);
+
+        if(
+            Math.abs(x-cx)>RENDER_DISTANCE ||
+            Math.abs(z-cz)>RENDER_DISTANCE
+        ){
+            scene.remove(obj);
+            chunks.delete(key);
+        }
+    }
+}
+
+
+// =====================
+// ИГРОВОЙ ЦИКЛ
+// =====================
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+
+    niva.position.z-=0.12;
+
+
+    updateChunks();
+
+
+    camera.position.set(
+        niva.position.x,
+        14,
+        niva.position.z+20
+    );
+
+    camera.lookAt(
+        niva.position.x,
+        0,
+        niva.position.z-8
+    );
+
+
+    renderer.render(scene,camera);
+}
+
+
+updateChunks();
+animate();
+
+
+addEventListener('resize',()=>{
+
+    camera.aspect=innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(innerWidth,innerHeight);
+
+});
+
+</script>
+</body>
+</html>
