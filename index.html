@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Бесконечная Нива 3D v0.01</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: #111;
+    }
+    canvas {
+        display: block;
+    }
+</style>
+</head>
+<body>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+// Камера
+const camera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+);
+
+camera.position.set(0, 5, 8);
+camera.lookAt(0, 0, 0);
+
+// Рендер
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Свет
+const sun = new THREE.DirectionalLight(0xffffff, 2);
+sun.position.set(5, 10, 5);
+scene.add(sun);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+// Земля
+const groundGeometry = new THREE.PlaneGeometry(50, 50);
+const groundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4b7a3c
+});
+
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// Временная "Нива"
+const carGeometry = new THREE.BoxGeometry(1.8, 0.7, 3);
+const carMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1d5b2b
+});
+
+const niva = new THREE.Mesh(carGeometry, carMaterial);
+niva.position.y = 0.45;
+scene.add(niva);
+
+// Колёса
+const wheelGeometry = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 16);
+const wheelMaterial = new THREE.MeshStandardMaterial({
+    color: 0x111111
+});
+
+for (let x of [-0.8, 0.8]) {
+    for (let z of [-1, 1]) {
+        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(x, 0.35, z);
+        scene.add(wheel);
+    }
+}
+
+// Анимация
+function animate() {
+    requestAnimationFrame(animate);
+
+    niva.rotation.y += 0.002;
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Адаптация экрана
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
