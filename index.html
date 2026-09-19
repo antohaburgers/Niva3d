@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Niva3D v0.08 Vertical Slice</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#000;touch-action:none}
+canvas{display:block}
+#joy{position:fixed;left:35px;bottom:120px;width:140px;height:140px;border-radius:50%;background:#ffffff22;border:2px solid #ffffff55}
+#knob{position:absolute;left:45px;top:45px;width:50px;height:50px;border-radius:50%;background:#ffffff99}
+</style>
+</head>
+<body>
+<div id="joy"><div id="knob"></div></div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
+import RAPIER from 'https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat/rapier.es.js';
+
+await RAPIER.init();
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9bd3ff);
+scene.fog=new THREE.Fog(0x9bd3ff,40,180);
+
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,1000);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x445533,1.7));
+
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(30,50,20);
+scene.add(sun);
+
+
+// PHYSICS WORLD
+const world=new RAPIER.World({x:0,y:-9.81,z:0});
+
+const groundBody=world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+world.createCollider(
+    RAPIER.ColliderDesc.cuboid(50,0.1,200),
+    groundBody
+);
+
+
+// CHUNK GENERATOR
+const chunks=new Map();
+const CHUNK=40;
+
+function createChunk(z){
+    const g=new THREE.Group();
+
+    const ground=new THREE.Mesh(
+        new THREE.PlaneGeometry(100,CHUNK),
+        new THREE.MeshStandardMaterial({color:0x587c3b})
+    );
+    ground.rotation.x=-Math.PI/2;
+    g.add(ground);
+
+    const road=new THREE.Mesh(
+        new THREE.PlaneGeometry(8,CHUNK),
+        new THREE.MeshStandardMaterial({color:0x70563a})
+    );
+    road.rotation.x=-Math.PI/2;
+    road.position.y=.02;
+    g.add(road);
+
+    for(let i=0;i<3;i++){
+        const tree=new THREE.Mesh(
+            new THREE.ConeGeometry(1,3,8),
+            new THREE.MeshStandardMaterial({color:0x246329})
+        );
+        tree.position.set(
+            (Math.random()-0.5)*35,
+            1.5,
+            (Math.random()-0.5)*CHUNK
+        );
+        g.add(tree);
+    }
+
+    g.position.z=z;
+    scene.add(g);
+    chunks.set(z,g);
+}
+
+function updateChunks(carZ){
+    const current=Math.floor(carZ/CHUNK)*CHUNK;
+    for(let z=current-80;z<=current+160;z+=CHUNK){
+        if(!chunks.has(z)) createChunk(z);
+    }
+}
+
+
+// PHYSICAL NIVA BODY
+const rb=world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+    .setTranslation(0,2,0)
+    .setAdditionalMass(1200)
+);
+
+world.createCollider(
+    RAPIER.ColliderDesc.cuboid(1,0.45,1.8),
+    rb
+);
+
+
+// VISUAL NIVA
+let niva;
+new GLTFLoader().load(
+    './niva_lowpoly_game_ready.glb',
+    gltf=>{
+        niva=gltf.scene;
+        scene.add(niva);
+    }
+);
+
+
+// JOYSTICK
+let gas=0,steer=0,active=false;
+const joy=document.getElementById('joy');
+const knob=document.getElementById('knob');
+let center={x:0,y:0};
+
+joy.ontouchstart=e=>{
+    active=true;
+    const r=joy.getBoundingClientRect();
+    center={x:r.left+70,y:r.top+70};
+};
+
+joy.ontouchmove=e=>{
+    if(!active)return;
+    const t=e.touches[0];
+    let dx=t.clientX-center.x;
+    let dy=t.clientY-center.y;
+    const m=45;
+    const l=Math.hypot(dx,dy);
+    if(l>m){dx=dx/l*m;dy=dy/l*m;}
+    knob.style.left=45+dx+'px';
+    knob.style.top=45+dy+'px';
+    steer=dx/m;
+    gas=-dy/m;
+};
+
+joy.ontouchend=()=>{
+    active=false;
+    gas=0;
+    steer=0;
+    knob.style.left='45px';
+    knob.style.top='45px';
+};
+
+
+// LOOP
+function loop(){
+    requestAnimationFrame(loop);
+
+    const v=rb.linvel();
+
+    rb.setLinvel({
+        x:steer*2,
+        y:v.y,
+        z:-gas*12
+    },true);
+
+    world.step();
+
+    const p=rb.translation();
+    updateChunks(p.z);
+
+    if(niva){
+        niva.position.set(p.x,p.y-0.45,p.z);
+        niva.rotation.y=-steer*0.25;
+    }
+
+    camera.position.set(p.x,14,p.z+22);
+    camera.lookAt(p.x,0,p.z-10);
+
+    renderer.render(scene,camera);
+}
+
+updateChunks(0);
+loop();
+
+addEventListener('resize',()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
